@@ -1,69 +1,88 @@
-// NEON BAY — tuning constants and the city's palette.
-// A sun-soaked coastal city, drawn top-down on one canvas. Everything here is
-// original: the city, the names, the cars, the people. No real places or brands.
-export const WORLD = { w: 3200, h: 2400 };
+// Neon Bay — world constants, palette and tuning.
+// All numbers live here so the other modules agree on the city.
+export const WORLD_W = 3200;
+export const WORLD_H = 2400;
 
-export const ROAD_W = 72;
-export const AVENUES = [400, 800, 1200, 1600, 2000, 2400, 2800];
-export const STREETS = [400, 800, 1200, 1600, 2000];
-export const BEACH_Y = 2180;
-export const WATER_Y = 2310;
-export const DOCK_X = 2920;
+// Road grid: 7 avenues (vertical) x 5 streets (horizontal).
+export const AVENUES = [240, 640, 1040, 1440, 1840, 2240, 2640];
+export const STREETS = [300, 700, 1100, 1500, 1900];
+export const ROAD_W = 96;
+export const SIDEWALK = 26;
 
-export const PLAYER = {
-  radius: 13,
-  walkSpeed: 210,
-  runSpeed: 300,
-  maxHealth: 100,
+// South shore: sand then water. East edge: docks then water.
+export const SAND_TOP = 2060;
+export const WATER_TOP = 2280;
+export const DOCKS_LEFT = 2900;
+export const EAST_WATER_LEFT = 3130;
+
+// Palm Park sits in the middle block (avenues 1040-1440, streets 1100-1500).
+export const PARK = { x: 1092, y: 1152, w: 296, h: 296 };
+
+// Named places the missions and the minimap point at.
+export const PLACES = {
+  garage: { name: "Ray's Garage", x: 700, y: 368, r: 70 },
+  docks: { name: 'Neon Docks', x: 2980, y: 1100, r: 80 },
+  chopShop: { name: 'Chop Shop', x: 380, y: 1830, r: 70 },
+  bank: { name: 'Bay Bank', x: 1440, y: 620, r: 80 },
+  hideout: { name: 'Hideout', x: 360, y: 300, r: 70 },
+  park: { name: 'Palm Park', x: 1240, y: 1300, r: 90 },
+};
+
+export const COLORS = {
+  grass: '#5d8a52',
+  grassDark: '#527c49',
+  asphalt: '#3b404b',
+  asphaltDark: '#333743',
+  roadLine: '#e8d27a',
+  sidewalk: '#b3a186',
+  curb: '#8d7d64',
+  sand: '#e2c384',
+  water: '#1d6d8f',
+  waterDeep: '#155a78',
+  dockWood: '#8a6a45',
+  parkGrass: '#4f8a4a',
+  buildingRoof: ['#c96f4a', '#4a7a96', '#8a5f9e', '#b85c7a', '#5f9e7a', '#a84a3a'],
+  neon: ['#ff5ea8', '#3ae0ff', '#ffe14a', '#7dff6a', '#ff8a3a'],
+};
+
+export const TUNING = {
+  playerWalk: 175,
+  playerRun: 265,
+  playerRadius: 14,
+  playerHealth: 100,
   pistolDamage: 34,
-  pistolRange: 420,
-  pistolCooldown: 0.22,
-  reloadTime: 0.9,
-  magSize: 12,
-  punchDamage: 18,
-  punchRange: 42,
-  punchCooldown: 0.45,
-};
-
-export const CAR = {
-  length: 54,
-  width: 26,
-  accel: 420,
-  brake: 700,
-  maxSpeed: 430,
-  maxReverse: 160,
-  turnRate: 2.6,
-  trafficSpeed: 130,
-  policeSpeed: 330,
-};
-
-export const POLICE = {
-  footSpeed: 185,
-  bustRadius: 34,
+  pistolAmmo: 12,
+  pistolFireDelay: 0.22,
+  pistolReload: 1.1,
+  punchDamage: 16,
+  punchRange: 46,
+  punchDelay: 0.45,
+  carAccel: 430,
+  carBrake: 700,
+  carMaxSpeed: 540,
+  carReverseMax: 190,
+  carTurn: 2.6,
+  carRadius: 17,
+  trafficSpeed: 150,
+  pedWalk: 55,
+  pedFlee: 190,
+  copFootSpeed: 205,
+  copCarSpeed: 330,
   bustTime: 1.6,
   wantedDecayDelay: 22,
-  wantedDecayStep: 8,
+  wantedDecayStep: 6,
+  saveEvery: 5,
 };
 
-export const PALETTE = {
-  grass: '#7fb069',
-  grassDark: '#6da25c',
-  road: '#3a3f4a',
-  roadLine: '#e8c85a',
-  sidewalk: '#b9b3a4',
-  buildingRoof: ['#c96f4a', '#4a7fb5', '#8a6fb5', '#4a9e7a', '#b5a44a', '#a04a5e'],
-  buildingEdge: '#2e2a26',
-  sand: '#e8d29a',
-  water: '#2f7fb5',
-  waterDeep: '#1f5d8a',
-  park: '#5d9e4f',
-  dock: '#8a7a5e',
-  plaza: '#c9c2b2',
-  carColors: ['#d94f3d', '#3d7bd9', '#e8b13d', '#3da06a', '#8a4fd9', '#e8e8e8', '#222831', '#d97b3d'],
-  policeCar: '#2b4a8a',
-  goldCar: '#d9a521',
-};
+export const CAR_MODELS = [
+  { name: 'Comet GT', color: '#ffd23e', gold: true, speed: 1.12 },
+  { name: 'Sunset Coupe', color: '#ff5e6a', speed: 1.05 },
+  { name: 'Bay Sedan', color: '#4aa3ff', speed: 0.95 },
+  { name: 'Palm Taxi', color: '#ffd23e', taxi: true, speed: 0.9 },
+  { name: 'Dune Pickup', color: '#7dff6a', speed: 0.92 },
+  { name: 'Marina Van', color: '#c9c9c9', speed: 0.85 },
+  { name: 'Neon Sport', color: '#ff5ea8', speed: 1.1 },
+  { name: 'Coral Hatch', color: '#ff8a3a', speed: 0.92 },
+];
 
-export const WANTED_NAMES = ['Clean', 'Wanted', 'Heat', 'Hot', 'ManHunt', 'Lockdown'];
-export const START_MONEY = 120;
-export const SAVE_KEY = 'neonbay-save-v1';
+export const SIGNS = ['TACOS', 'HOTEL', 'BAR', '24H', 'PIZZA', 'MOTEL', 'GYM', 'CLUB', 'DONUTS', 'PAWN', 'SUSHI', 'NEON', 'CAFE', 'MART'];

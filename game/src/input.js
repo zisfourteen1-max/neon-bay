@@ -1,66 +1,60 @@
-// NEON BAY — keyboard and mouse state, read fresh every frame by the game.
-// WASD/arrows to move, mouse to aim, click to shoot, E to steal a car.
+// Keyboard + mouse input with edge detection (pressed() is true once per keydown).
 export class Input {
   constructor(canvas) {
-    this.keys = {};
-    this.pressed = {};
+    this.keys = new Set();
+    this.pressedKeys = new Set();
     this.mouseX = 0;
     this.mouseY = 0;
     this.mouseDown = false;
-    this.mouseClicked = false;
+    this.mouseWorldX = 0;
+    this.mouseWorldY = 0;
     this.canvas = canvas;
-
-    window.addEventListener('keydown', (e) => {
-      const k = e.key.toLowerCase();
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
-      if (!this.keys[k]) this.pressed[k] = true;
-      this.keys[k] = true;
-    });
-    window.addEventListener('keyup', (e) => {
-      this.keys[e.key.toLowerCase()] = false;
-    });
-    canvas.addEventListener('mousemove', (e) => {
+    this._onKeyDown = (e) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+      if (!e.repeat) this.pressedKeys.add(e.code);
+      this.keys.add(e.code);
+    };
+    this._onKeyUp = (e) => this.keys.delete(e.code);
+    this._onMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect();
       this.mouseX = e.clientX - rect.left;
       this.mouseY = e.clientY - rect.top;
-    });
-    canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) {
-        this.mouseDown = true;
-        this.mouseClicked = true;
-      }
-    });
-    window.addEventListener('mouseup', (e) => {
+    };
+    this._onMouseDown = (e) => {
+      if (e.button === 0) this.mouseDown = true;
+    };
+    this._onMouseUp = (e) => {
       if (e.button === 0) this.mouseDown = false;
-    });
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    window.addEventListener('blur', () => {
-      this.keys = {};
+    };
+    this._onBlur = () => {
+      this.keys.clear();
       this.mouseDown = false;
-    });
+    };
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+    canvas.addEventListener('mousemove', this._onMouseMove);
+    canvas.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
+    window.addEventListener('blur', this._onBlur);
   }
 
-  down(key) {
-    return !!this.keys[key];
+  pressed(code) {
+    return this.pressedKeys.has(code);
   }
 
-  // True only on the frame the key went down; cleared by endFrame().
-  hit(key) {
-    return !!this.pressed[key];
+  // Call once per frame after the game has read the edges.
+  endFrame() {
+    this.pressedKeys.clear();
   }
 
+  // WASD / arrows as a -1..1 axis.
   axis() {
     let x = 0;
     let y = 0;
-    if (this.down('a') || this.down('arrowleft')) x -= 1;
-    if (this.down('d') || this.down('arrowright')) x += 1;
-    if (this.down('w') || this.down('arrowup')) y -= 1;
-    if (this.down('s') || this.down('arrowdown')) y += 1;
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) y -= 1;
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) y += 1;
     return { x, y };
-  }
-
-  endFrame() {
-    this.pressed = {};
-    this.mouseClicked = false;
   }
 }

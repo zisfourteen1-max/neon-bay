@@ -1,201 +1,166 @@
-// NEON BAY — the story: four jobs for Vera Voss, a fixer who runs the bay
-// from a back room above Ray's Garage. Each mission has stages, a map marker,
-// a reward in dollars, and a tracker line on the HUD.
-import { addPopup, setBanner } from './state.js';
-import { dist } from './random.js';
-import { commitCrime } from './police.js';
+// Vera Voss's four story missions: pickup, grand theft, losing the heat,
+// and the Bay Bank heist. Pure state machine — no DOM, testable in Node.
+import { PLACES } from './config.js';
+import { addBanner, addFloater, spawnParticles, saveGame } from './state.js';
+import { spawnGoldCar } from './cars.js';
+import { addCrime } from './police.js';
 
 export const MISSIONS = [
   {
-    id: 'pickup',
+    id: 1,
     title: 'First Job',
-    giver: 'Vera Voss',
-    intro: 'Vera needs a package from the docks. Go get it, no questions.',
+    brief: 'Pick up the package at the Neon Docks, then deliver it to Ray\u2019s Garage.',
     reward: 300,
-    steps: [
-      { text: 'Drive to Neon Docks and pick up the package', place: 'docks', radius: 70 },
-      { text: "Deliver the package to Ray's Garage", place: 'garage', radius: 70 },
-    ],
   },
   {
-    id: 'hotwheels',
+    id: 2,
     title: 'Hot Wheels',
-    giver: 'Vera Voss',
-    intro: 'A gold Comet GT is parked by Palm Park. Steal it. The heat is on you.',
+    brief: 'Steal the gold Comet GT and deliver it to the Chop Shop. The law will notice.',
     reward: 500,
-    steps: [
-      { text: 'Steal the gold Comet GT by Palm Park', car: 'gold', radius: 0 },
-      { text: 'Deliver the Comet to the Chop Shop', place: 'chopShop', radius: 70 },
-    ],
   },
   {
-    id: 'heatwave',
+    id: 3,
     title: 'Heat Wave',
-    giver: 'Vera Voss',
-    intro: 'The whole bay is looking for you. Lose the cops and go dark.',
+    brief: 'You are at 3 stars. Lose the heat — get back to zero stars.',
     reward: 700,
-    steps: [
-      { text: 'Lose the cops — get your wanted level to zero', loseHeat: true },
-    ],
   },
   {
-    id: 'heist',
+    id: 4,
     title: 'Bay Heist',
-    giver: 'Vera Voss',
-    intro: 'One last job: the Bay Bank vault. Grab the cash and vanish.',
+    brief: 'Hold the Bay Bank vault for 5 seconds, then escape to the Hideout.',
     reward: 1500,
-    steps: [
-      { text: 'Reach the Bay Bank and hold the vault', place: 'bank', radius: 70, hold: 5 },
-      { text: 'Escape to the Hideout', place: 'hideout', radius: 80 },
-    ],
   },
 ];
 
-export function startMission(G, index, sfx) {
-  const m = MISSIONS[index];
-  G.missionIndex = index;
-  G.mission = m;
-  G.missionStage = 0;
-  G.missionTimer = 0;
-  G.missionHold = 0;
-  G.missionDone = false;
-  setBanner(G, m.title, `${m.giver}: ${m.intro}`, 3.4);
-  if (sfx) sfx.missionStart();
-  if (m.id === 'heatwave') commitCrime(G, 3);
+export function startMission(state, index, city, rng) {
+  const def = MISSIONS[index];
+  if (!def) return;
+  const mission = { id: def.id, stage: 0, timer: 0, elapsed: 0, hold: 0, goldCarId: null };
+  state.mission = mission;
+  if (def.id === 2) {
+    const car = spawnGoldCar(state, city, rng);
+    mission.goldCarId = car.id;
+    addBanner(state, 'MISSION: HOT WHEELS', 'Steal the gold Comet GT. It is parked somewhere in Neon Bay.');
+  } else if (def.id === 3) {
+    state.wanted = 3;
+    state.heatTimer = 0;
+    addCrime(state, 0);
+    addBanner(state, 'MISSION: HEAT WAVE', 'Three stars on you. Lose the heat — get to zero.');
+  } else if (def.id === 1) {
+    addBanner(state, 'MISSION: FIRST JOB', 'Pick up the package at the Neon Docks.');
+  } else if (def.id === 4) {
+    addBanner(state, 'MISSION: BAY HEIST', 'Get to the Bay Bank and hold the vault.');
+  }
 }
 
-export function currentStep(G) {
-  if (!G.mission) return null;
-  return G.mission.steps[G.missionStage] || null;
+export function startNextMission(state, city, rng) {
+  if (state.missionsDone >= MISSIONS.length) return;
+  startMission(state, state.missionsDone, city, rng);
 }
 
-export function missionMarker(G) {
-  const step = currentStep(G);
-  if (!step) return null;
-  if (step.car === 'gold') {
-    const car = G.cars.find((c) => c.id === G.goldCarId);
-    return car ? { x: car.x, y: car.y } : null;
+export function missionTarget(state) {
+  const m = state.mission;
+  if (!m) return null;
+  if (m.id === 1) return m.stage === 0
+    ? { x: PLACES.docks.x, y: PLACES.docks.y, label: 'Pick up the package' }
+    : { x: PLACES.garage.x, y: PLACES.garage.y, label: 'Deliver to Ray\u2019s Garage' };
+  if (m.id === 2) {
+    if (m.stage === 0) {
+      const car = state.cars.find((c) => c.id === m.goldCarId);
+      return car
+        ? { x: car.x, y: car.y, label: 'Steal the gold Comet GT' }
+        : { x: PLACES.chopShop.x, y: PLACES.chopShop.y, label: 'Find the gold Comet GT' };
+    }
+    return { x: PLACES.chopShop.x, y: PLACES.chopShop.y, label: 'Deliver to the Chop Shop' };
   }
-  if (step.place) {
-    const p = G.city.places[step.place];
-    return p ? { x: p.x, y: p.y } : null;
-  }
+  if (m.id === 3) return { x: state.player.x, y: state.player.y, label: 'Lose the heat — reach 0 stars', self: true };
+  if (m.id === 4) return m.stage === 0
+    ? { x: PLACES.bank.x, y: PLACES.bank.y, label: 'Get to the Bay Bank' }
+    : m.stage === 1
+      ? { x: PLACES.bank.x, y: PLACES.bank.y, label: `Hold the vault… ${Math.ceil(5 - m.hold)}s` }
+      : { x: PLACES.hideout.x, y: PLACES.hideout.y, label: 'Escape to the Hideout' };
   return null;
 }
 
-export function missionObjectiveText(G) {
-  const step = currentStep(G);
-  if (!step) return 'No active job — press M to see the map, or take the next job.';
-  if (step.loseHeat) return `${step.text}  (wanted: ${G.wanted}★)`;
-  if (step.hold) return `${step.text}  (${Math.ceil(step.hold - G.missionHold)}s)`;
-  return step.text;
+export function objectiveText(state) {
+  const t = missionTarget(state);
+  if (!t) return state.storyDone ? 'Story complete — Neon Bay is yours.' : 'Talk to Vera Voss.';
+  const def = MISSIONS[state.mission.id - 1];
+  return `${def.title} — ${t.label}`;
 }
 
-// Advance the mission one step; complete it when the last step is done.
-function advanceMission(G, sfx) {
-  G.missionStage += 1;
-  G.missionHold = 0;
-  if (G.missionStage >= G.mission.steps.length) {
-    const reward = G.mission.reward;
-    G.player.money += reward;
-    G.stats.missionsDone += 1;
-    G.completedMissions.push(G.mission.id);
-    G.missionDone = true;
-    setBanner(G, 'Job Complete', `+$${reward}  —  ${G.mission.title}`, 3);
-    if (sfx) sfx.missionComplete();
-    const pp = { x: G.player.x, y: G.player.y };
-    for (let i = 0; i < 40; i += 1) {
-      const a = G.rng.range(0, Math.PI * 2);
-      const s = G.rng.range(60, 260);
-      G.particles.push({
-        x: pp.x, y: pp.y,
-        vx: Math.cos(a) * s, vy: Math.sin(a) * s - 60,
-        life: G.rng.range(0.6, 1.2), maxLife: 1.2,
-        color: G.rng.pick(['#e8b13d', '#d94f3d', '#3da06a', '#3d7bd9', '#e8e8e8']),
-        size: G.rng.range(3, 6),
-      });
-    }
-    if (G.missionIndex >= MISSIONS.length - 1) {
-      G.storyComplete = true;
-    }
-    G.mission = null;
-  } else if (sfx) {
-    sfx.pickup();
+function completeMission(state) {
+  const def = MISSIONS[state.mission.id - 1];
+  state.money += def.reward;
+  state.missionsDone += 1;
+  state.mission = null;
+  state.nextMissionTimer = 2.5;
+  addBanner(state, 'MISSION COMPLETE', `${def.title} — +$${def.reward}`);
+  addFloater(state, state.player.x, state.player.y - 34, `+$${def.reward}`, '#7dff6a');
+  for (let i = 0; i < 40; i++) {
+    spawnParticles(state, state.player.x, state.player.y, 1, ['#ff5ea8', '#3ae0ff', '#ffe14a', '#7dff6a'][i % 4], 260);
+  }
+  saveGame(state);
+  if (state.missionsDone >= MISSIONS.length) {
+    state.storyDone = true;
+    state.mode = 'story';
   }
 }
 
-export function updateMissions(G, dt, sfx) {
-  if (!G.mission) {
-    // Offer the next job automatically after a short breather.
-    if (G.missionIndex < MISSIONS.length && !G.storyComplete) {
-      G.missionTimer += dt;
-      if (G.missionTimer > 4 && G.missionIndex < MISSIONS.length) {
-        startMission(G, G.missionIndex, sfx);
-        G.missionTimer = 0;
+export function updateMission(state, dt) {
+  const m = state.mission;
+  if (!m) {
+    if (!state.storyDone && state.mode === 'playing' && state.missionsDone < MISSIONS.length) {
+      state.nextMissionTimer = (state.nextMissionTimer ?? 2.5) - dt;
+      if (state.nextMissionTimer <= 0) {
+        // The main loop passes city/rng via state._city/_rng (set at boot).
+        startMission(state, state.missionsDone, state._city, state._rng);
       }
     }
     return;
   }
-  const step = currentStep(G);
-  if (!step) return;
-  const px = G.player.inCar
-    ? (G.cars.find((c) => c.id === G.player.inCar) || G.player).x
-    : G.player.x;
-  const py = G.player.inCar
-    ? (G.cars.find((c) => c.id === G.player.inCar) || G.player).y
-    : G.player.y;
+  m.elapsed += dt;
+  const p = state.player;
+  const near = (place, r) => Math.hypot(p.x - place.x, p.y - place.y) < (r || place.r);
 
-  if (step.loseHeat) {
-    if (G.wanted === 0) advanceMission(G, sfx);
-    return;
-  }
-  if (step.car === 'gold') {
-    if (G.player.inCar === G.goldCarId) {
-      commitCrime(G, 2);
-      addPopup(G, px, py - 40, 'STOLEN!', '#d9a521');
-      advanceMission(G, sfx);
+  if (m.id === 1) {
+    if (m.stage === 0 && near(PLACES.docks)) {
+      m.stage = 1;
+      addBanner(state, 'PACKAGE SECURED', 'Deliver it to Ray\u2019s Garage.');
+      addFloater(state, p.x, p.y - 30, 'Package picked up', '#7dff6a');
+    } else if (m.stage === 1 && near(PLACES.garage)) {
+      completeMission(state);
     }
-    return;
-  }
-  if (step.place) {
-    const p = G.city.places[step.place];
-    const d = dist(px, py, p.x, p.y);
-    if (d < step.radius) {
-      if (step.hold) {
-        G.missionHold += dt;
-        if (G.missionHold >= step.hold) {
-          commitCrime(G, 3);
-          addPopup(G, p.x, p.y - 40, 'CASH GRABBED!', '#e8b13d');
-          advanceMission(G, sfx);
+  } else if (m.id === 2) {
+    if (m.stage === 0 && p.inCar === m.goldCarId) {
+      m.stage = 1;
+      state.wanted = Math.max(state.wanted, 2);
+      state.heatTimer = 0;
+      addBanner(state, 'COMET GT STOLEN', 'The Chop Shop is waiting. Lose the cops if you can.');
+    } else if (m.stage === 1 && p.inCar === m.goldCarId && near(PLACES.chopShop)) {
+      completeMission(state);
+    }
+  } else if (m.id === 3) {
+    if (state.wanted === 0 && m.elapsed > 8) completeMission(state);
+  } else if (m.id === 4) {
+    if (m.stage === 0 && near(PLACES.bank)) {
+      m.stage = 1;
+      m.hold = 0;
+      addBanner(state, 'VAULT BREACH', 'Hold the vault for 5 seconds!');
+    } else if (m.stage === 1) {
+      if (near(PLACES.bank)) {
+        m.hold += dt;
+        if (m.hold >= 5) {
+          m.stage = 2;
+          state.wanted = Math.max(state.wanted, 3);
+          state.heatTimer = 0;
+          addBanner(state, 'VAULT CRACKED — $1,500', 'Run! Escape to the Hideout.');
         }
       } else {
-        if (G.mission.id === 'pickup' && G.missionStage === 0 && sfx) sfx.pickup();
-        advanceMission(G, sfx);
+        m.hold = Math.max(0, m.hold - dt * 2);
       }
-    } else {
-      G.missionHold = Math.max(0, G.missionHold - dt * 2);
+    } else if (m.stage === 2 && near(PLACES.hideout)) {
+      completeMission(state);
     }
-  }
-}
-
-export function saveProgress(G) {
-  try {
-    localStorage.setItem('neonbay-save-v1', JSON.stringify({
-      money: G.player.money,
-      completed: G.completedMissions,
-      next: G.storyComplete ? MISSIONS.length : G.missionIndex,
-    }));
-  } catch (e) { /* storage unavailable: the game still plays */ }
-}
-
-export function loadProgress() {
-  try {
-    const raw = localStorage.getItem('neonbay-save-v1');
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (!data || typeof data.money !== 'number') return null;
-    return data;
-  } catch (e) {
-    return null;
   }
 }

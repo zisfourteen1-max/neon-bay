@@ -1,5 +1,4 @@
-// NEON BAY — a tiny seeded random-number generator so every run of the same
-// seed builds the same city, the same traffic and the same screenshot frames.
+// Seeded random numbers — one stream per game so shot modes are deterministic.
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function next() {
@@ -15,11 +14,11 @@ export function makeRng(seed) {
   const next = mulberry32(seed);
   return {
     next,
-    range(min, max) {
-      return min + next() * (max - min);
+    range(a, b) {
+      return a + (b - a) * next();
     },
-    int(min, max) {
-      return Math.floor(min + next() * (max - min + 1));
+    int(a, b) {
+      return Math.floor(a + (b - a + 1) * next());
     },
     pick(list) {
       return list[Math.floor(next() * list.length)];
@@ -28,28 +27,4 @@ export function makeRng(seed) {
       return next() < p;
     },
   };
-}
-
-export function clamp(value, min, max) {
-  return value < min ? min : value > max ? max : value;
-}
-
-export function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-export function dist(x1, y1, x2, y2) {
-  return Math.hypot(x2 - x1, y2 - y1);
-}
-
-export function angleTo(x1, y1, x2, y2) {
-  return Math.atan2(y2 - y1, x2 - x1);
-}
-
-// Shortest signed turn from angle `from` toward angle `to`.
-export function angleDiff(from, to) {
-  let d = to - from;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
 }

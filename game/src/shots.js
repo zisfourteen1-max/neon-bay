@@ -1,109 +1,89 @@
-// NEON BAY — the four screenshot scenes. Each one plays the real game forward
-// from a fresh world for a fixed number of steps, steered by a simple
-// autopilot, so the frame is what a short game really looks like and the same
-// seed always gives the same frame. The frame then repaints every animation
-// frame so a screenshot is never blank.
-import { drivePlayerCar, gridSteerTarget, stealCar, updateTraffic } from './cars.js';
-import { updatePeds } from './pedestrians.js';
-import { spawnPoliceCars, updatePolice } from './police.js';
+// Deterministic screenshot scenes (?shot=menu|drive|chase|mission&seed=1).
+// Each one stages the game so one frame shows several systems at once.
+// main.js renders a few frames, then sets window.__shotReady.
+import { PLACES } from './config.js';
 import { startMission } from './missions.js';
-import { SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-import { angleDiff, clamp } from './random.js';
+import { makeCar } from './cars.js';
 
-const STEP = 1 / 60;
-const STUB_SFX = { busted() {}, missionStart() {}, missionComplete() {}, pickup() {} };
-
-// Steer a car toward a target point, following the road grid like a player would.
-function driveToward(G, car, tx, ty, dt) {
-  const steer = gridSteerTarget(car.x, car.y, tx, ty);
-  const want = Math.atan2(steer.y - car.y, steer.x - car.x);
-  const diff = angleDiff(car.angle, want);
-  const fakeInput = {
-    axis: () => ({ x: clamp(diff * 2, -1, 1), y: -1 }),
-    down: () => false,
-    hit: () => false,
-  };
-  drivePlayerCar(G, car, fakeInput, dt);
-}
-
-function stepWorld(G, dt) {
-  updateTraffic(G, dt);
-  updatePeds(G, dt);
-  updatePolice(G, dt, STUB_SFX);
-  for (const pt of G.particles) {
-    pt.life -= dt;
-    pt.x += pt.vx * dt;
-    pt.y += pt.vy * dt;
+export function setupShot(mode, game) {
+  const { state, city, rng } = game;
+  state.shotMode = mode;
+  if (mode === 'menu') {
+    state.mode = 'title';
+    state.camera = { x: 1240, y: 980 };
+    state.player.x = 1240;
+    state.player.y = 1100;
+    return;
   }
-  G.particles = G.particles.filter((pt) => pt.life > 0);
-}
-
-// Put the player in the parked car nearest to a point.
-function putPlayerInCar(G, x, y) {
-  let best = null;
-  let bestD = Infinity;
-  for (const car of G.cars) {
-    if (car.police || car.traffic) continue;
-    const d = Math.hypot(car.x - x, car.y - y);
-    if (d < bestD) { bestD = d; best = car; }
+  if (mode === 'drive') {
+    state.mode = 'playing';
+    startMission(state, 0, city, rng);
+    state.mission.stage = 1; // package picked up — objective: deliver to the garage
+    // Put the player in a car on 5th Avenue heading south, traffic around.
+    const car = state.cars.find((c) => c.kind === 'parked') || makeCar('parked', 1440, 700, Math.PI / 2, 1);
+    car.x = 1440;
+    car.y = 700;
+    car.angle = Math.PI / 2;
+    car.speed = 320;
+    car.dirX = 0;
+    car.dirY = 1;
+    state.player.inCar = car.id;
+    state.player.x = car.x;
+    state.player.y = car.y;
+    state.player.angle = car.angle;
+    state.camera = { x: car.x, y: car.y };
+    return;
   }
-  if (!best) return null;
-  stealCar(G, best);
-  best.speed = 0;
-  return best;
-}
-
-/**
- * Set `G` to the named scene (menu, drive, chase or mission; anything else is
- * menu) and return the screen to draw over it.
- */
-export function stageShot(name, G) {
-  if (name === 'drive') {
-    G.screen = SCREEN_PLAY;
-    startMission(G, 0, STUB_SFX);
-    const car = putPlayerInCar(G, 800, 1200);
-    for (let i = 0; i < 8 / STEP; i += 1) {
-      G.time += STEP;
-      if (car) driveToward(G, car, 800, 2000, STEP);
-      stepWorld(G, STEP);
+  if (mode === 'chase') {
+    state.mode = 'playing';
+    startMission(state, 1, city, rng);
+    state.mission.stage = 1; // gold Comet GT stolen — deliver to the Chop Shop
+    state.wanted = 3;
+    state.heatTimer = 0;
+    const gold = state.cars.find((c) => c.id === state.mission.goldCarId);
+    if (gold) {
+      gold.x = 1840;
+      gold.y = 1100;
+      gold.angle = 0;
+      gold.speed = 380;
+      gold.dirX = 1;
+      gold.dirY = 0;
+      state.player.inCar = gold.id;
+      state.player.x = gold.x;
+      state.player.y = gold.y;
+      state.player.angle = 0;
     }
-    return { screen: SCREEN_PLAY };
+    // Two police cars on the player's tail, one foot cop ahead.
+    const cop1 = makeCar('police', 1690, 1100, 0, 2);
+    cop1.color = '#1a1a2e';
+    cop1.speed = 330;
+    const cop2 = makeCar('police', 1840, 940, Math.PI / 2, 2);
+    cop2.color = '#1a1a2e';
+    cop2.speed = 330;
+    state.cars.push(cop1, cop2);
+    state.cops.push({ x: 1980, y: 1060, angle: Math.PI, speed: 205, down: false, downTimer: 0, busting: false });
+    state.camera = { x: state.player.x, y: state.player.y };
+    return;
   }
-  if (name === 'chase') {
-    G.screen = SCREEN_PLAY;
-    startMission(G, 0, STUB_SFX);
-    G.wanted = 3;
-    const car = putPlayerInCar(G, 1200, 1200);
-    spawnPoliceCars(G, 2);
-    for (let i = 0; i < 7 / STEP; i += 1) {
-      G.time += STEP;
-      if (car) driveToward(G, car, 1200, 300, STEP);
-      stepWorld(G, STEP);
-    }
-    return { screen: SCREEN_PLAY };
+  if (mode === 'mission') {
+    state.mode = 'playing';
+    startMission(state, 3, city, rng);
+    state.mission.stage = 1; // holding the bank vault
+    state.mission.hold = 3.2;
+    state.wanted = 2;
+    state.heatTimer = 0;
+    state.player.x = PLACES.bank.x;
+    state.player.y = PLACES.bank.y + 40;
+    state.player.angle = -Math.PI / 2;
+    state.player.ammo = 7;
+    state.camera = { x: state.player.x, y: state.player.y };
+    const copCar = makeCar('police', PLACES.bank.x + 260, PLACES.bank.y, Math.PI, 2);
+    copCar.color = '#1a1a2e';
+    copCar.speed = 330;
+    state.cars.push(copCar);
+    state.cops.push({ x: PLACES.bank.x - 120, y: PLACES.bank.y + 60, angle: 0, speed: 205, down: false, downTimer: 0, busting: false });
+    return;
   }
-  if (name === 'mission') {
-    G.screen = SCREEN_PLAY;
-    startMission(G, 0, STUB_SFX);
-    const car = putPlayerInCar(G, 2400, 1600);
-    for (let i = 0; i < 9 / STEP; i += 1) {
-      G.time += STEP;
-      if (car) driveToward(G, car, 2900, 1780, STEP);
-      stepWorld(G, STEP);
-    }
-    return { screen: SCREEN_PLAY };
-  }
-  // Menu: a living city behind the title screen.
-  G.screen = SCREEN_TITLE;
-  G.player.x = 1400;
-  G.player.y = 1000;
-  for (let i = 0; i < 6 / STEP; i += 1) {
-    G.time += STEP;
-    stepWorld(G, STEP);
-  }
-  return { screen: SCREEN_TITLE };
-}
-
-export function shotScreens() {
-  return ['menu', 'drive', 'chase', 'mission'];
+  // Unknown mode: just play.
+  state.mode = 'playing';
 }

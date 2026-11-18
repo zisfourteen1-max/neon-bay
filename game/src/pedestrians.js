@@ -1,57 +1,91 @@
-// NEON BAY — pedestrians: locals strolling the sidewalks, who run away when
-// shots ring out or a car bears down on them.
-import { AVENUES, STREETS, WORLD } from './config.js';
-import { collideBuildings } from './city.js';
-import { clamp, dist } from './random.js';
-import { makePed, playerPos } from './state.js';
+// Pedestrians: sidewalk walkers who stroll, flee gunfire and fast cars,
+// and get knocked down (never killed) when a car hits them.
+import { AVENUES, STREETS, ROAD_W, TUNING } from './config.js';
+import { resolveCircle, isWater } from './city.js';
+import { spawnParticles, addFloater } from './state.js';
 
-export function updatePeds(G, dt) {
-  const pp = playerPos(G);
-  const inCar = !!G.player.inCar;
-  for (let i = G.peds.length - 1; i >= 0; i -= 1) {
-    const ped = G.peds[i];
-    ped.walkPhase += dt * 8;
-    // Flee from gunfire, or from a fast car closing in.
-    if (ped.flee > 0) {
-      ped.flee -= dt;
-      const a = Math.atan2(ped.y - pp.y, ped.x - pp.x);
-      ped.x += Math.cos(a) * 150 * dt;
-      ped.y += Math.sin(a) * 150 * dt;
+const SHIRTS = ['#ff5e6a', '#4aa3ff', '#ffd23e', '#7dff6a', '#ff8a3a', '#c9a0ff', '#ffffff', '#3ae0ff'];
+
+export function spawnPeds(state, city, rng, count) {
+  for (let i = 0; i < count; i++) {
+    const horizontal = rng.chance(0.5);
+    const road = horizontal ? rng.pick(STREETS) : rng.pick(AVENUES);
+    const along = horizontal ? rng.range(120, 3000) : rng.range(120, 2100);
+    const side = rng.chance(0.5) ? 1 : -1;
+    const x = horizontal ? along : road + side * (ROAD_W / 2 + 14);
+    const y = horizontal ? road + side * (ROAD_W / 2 + 14) : along;
+    if (isWater(x, y)) continue;
+    state.peds.push({
+      x, y,
+      angle: horizontal ? (rng.chance(0.5) ? 0 : Math.PI) : (rng.chance(0.5) ? Math.PI / 2 : -Math.PI / 2),
+      speed: TUNING.pedWalk * rng.range(0.7, 1.3),
+      mode: 'walk', // walk | flee | down
+      shirt: rng.pick(SHIRTS),
+      fleeTimer: 0,
+      downTimer: 0,
+      turnTimer: rng.range(2, 8),
+    });
+  }
+}
+
+export function fleeFrom(state, x, y, radius) {
+  for (const ped of state.peds) {
+    if (ped.mode === 'down') continue;
+    const d = Math.hypot(ped.x - x, ped.y - y);
+    if (d < radius) {
+      ped.mode = 'flee';
+      ped.fleeTimer = 3 + Math.random() * 2;
+      ped.angle = Math.atan2(ped.y - y, ped.x - x);
+    }
+  }
+}
+
+export function updatePeds(state, city, dt) {
+  for (const ped of state.peds) {
+    if (ped.mode === 'down') {
+      ped.downTimer -= dt;
+      if (ped.downTimer <= 0) {
+        ped.mode = 'flee';
+        ped.fleeTimer = 4;
+        ped.angle = Math.random() * Math.PI * 2;
+      }
+      continue;
+    }
+    const speed = ped.mode === 'flee' ? TUNING.pedFlee : ped.speed;
+    ped.x += Math.cos(ped.angle) * speed * dt;
+    ped.y += Math.sin(ped.angle) * speed * dt;
+    const pos = { x: ped.x, y: ped.y };
+    if (resolveCircle(city, pos, 10)) {
+      ped.x = pos.x;
+      ped.y = pos.y;
+      ped.angle += Math.PI / 2;
+    }
+    if (ped.mode === 'flee') {
+      ped.fleeTimer -= dt;
+      if (ped.fleeTimer <= 0) ped.mode = 'walk';
     } else {
-      const nearCar = inCar && dist(ped.x, ped.y, pp.x, pp.y) < 120;
-      if (nearCar) ped.flee = 1.2;
-      ped.x += Math.cos(ped.angle) * ped.speed * dt;
-      ped.y += Math.sin(ped.angle) * ped.speed * dt;
-      // At an intersection, sometimes pick a new direction along the grid.
-      const nearX = AVENUES.some((ax) => Math.abs(ped.x - ax) < 52);
-      const nearY = STREETS.some((sy) => Math.abs(ped.y - sy) < 52);
-      if ((nearX || nearY) && G.rng.chance(dt * 0.5)) {
-        ped.angle = G.rng.pick([0, Math.PI / 2, Math.PI, -Math.PI / 2]);
-      }
-      // Turn back at the world edge or the beach.
-      if (ped.x < 80 || ped.x > WORLD.w - 80 || ped.y < 80 || ped.y > WORLD.h - 200) {
-        ped.angle += Math.PI;
+      ped.turnTimer -= dt;
+      if (ped.turnTimer <= 0) {
+        ped.turnTimer = 3 + Math.random() * 7;
+        // Wander: mostly keep going, sometimes turn at a corner.
+        if (Math.random() < 0.4) ped.angle += (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
       }
     }
-    const fixed = collideBuildings(G.city, ped.x, ped.y, 12);
-    ped.x = fixed.x;
-    ped.y = fixed.y;
-    ped.x = clamp(ped.x, 40, WORLD.w - 40);
-    ped.y = clamp(ped.y, 40, WORLD.h - 40);
-    // A pedestrian hit by the player's car is knocked down and runs off.
-    if (inCar) {
-      const car = G.cars.find((c) => c.id === G.player.inCar);
-      if (car && Math.abs(car.speed) > 60 && dist(ped.x, ped.y, car.x, car.y) < 34) {
-        ped.flee = 4;
-        ped.x += (ped.x - car.x) * 0.4;
-        ped.y += (ped.y - car.y) * 0.4;
-      }
+    // Stay inside the walkable city.
+    if (ped.x < 30 || ped.x > 3090 || ped.y < 30 || ped.y > 2240) {
+      ped.angle += Math.PI;
+      ped.x = Math.max(30, Math.min(3090, ped.x));
+      ped.y = Math.max(30, Math.min(2240, ped.y));
     }
   }
-  // Keep the streets populated: replace anyone who wandered too far away.
-  if (G.peds.length < 22) {
-    const x = clamp(pp.x + G.rng.range(-700, 700), 90, WORLD.w - 90);
-    const y = clamp(pp.y + G.rng.range(-500, 500), 90, WORLD.h - 240);
-    G.peds.push(makePed(G.rng, x, y));
-  }
+}
+
+// A car ran a pedestrian over: they go down, the player earns heat.
+export function knockPedDown(state, ped) {
+  if (ped.mode === 'down') return;
+  ped.mode = 'down';
+  ped.downTimer = 6;
+  state.stats.pedsHit++;
+  spawnParticles(state, ped.x, ped.y, 10, '#ff5e6a', 120);
+  addFloater(state, ped.x, ped.y - 20, 'Ouch!', '#ff8a8a');
 }
