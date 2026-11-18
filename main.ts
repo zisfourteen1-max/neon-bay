@@ -1,12 +1,14 @@
-// A working gta6-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. Only the plumbing, not an open world: Block
-// Dodger, a plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build
-// your own open-world crime game in its place (three.js or any library you vendor under game/),
-// put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
+// NEON BAY — an original open-world crime game for make.fun's gta6-01 bounty
+// (Node 22, standard library only). The game lives in this directory's game/
+// folder: plain static files a desktop browser loads offline (game/index.html
+// and its ES modules, no library and no network request). You play Kit Marlowe,
+// fresh out of lockup in the sun-soaked coastal city of Neon Bay: explore on
+// foot and by car, steal cars, outrun the Neon Bay police as your wanted level
+// climbs, and run four story missions for the fixer Vera Voss. The program
+// hands the game in: it copies game/ and screenshots/ from beside this file
+// to /output and writes /output/dossier.json, the summary the judge reads,
+// with the vendored make.fun library. Put your 3 or 4 PNG or JPEG screenshots
+// in screenshots/ (the first by name is the cover) and run it.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
@@ -19,6 +21,9 @@ import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// NEON BAY dossier: the game, its four screenshots and the judge's summary.
+console.log(`Building the NEON BAY dossier into ${out}`);
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });

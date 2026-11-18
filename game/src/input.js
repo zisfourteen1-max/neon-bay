@@ -1,53 +1,66 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// NEON BAY — keyboard and mouse state, read fresh every frame by the game.
+// WASD/arrows to move, mouse to aim, click to shoot, E to steal a car.
+export class Input {
+  constructor(canvas) {
+    this.keys = {};
+    this.pressed = {};
+    this.mouseX = 0;
+    this.mouseY = 0;
+    this.mouseDown = false;
+    this.mouseClicked = false;
+    this.canvas = canvas;
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+      if (!this.keys[k]) this.pressed[k] = true;
+      this.keys[k] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      this.keys[e.key.toLowerCase()] = false;
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      this.mouseX = e.clientX - rect.left;
+      this.mouseY = e.clientY - rect.top;
+    });
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        this.mouseDown = true;
+        this.mouseClicked = true;
+      }
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseDown = false;
+    });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('blur', () => {
+      this.keys = {};
+      this.mouseDown = false;
+    });
+  }
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+  down(key) {
+    return !!this.keys[key];
+  }
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+  // True only on the frame the key went down; cleared by endFrame().
+  hit(key) {
+    return !!this.pressed[key];
+  }
 
-  window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  axis() {
+    let x = 0;
+    let y = 0;
+    if (this.down('a') || this.down('arrowleft')) x -= 1;
+    if (this.down('d') || this.down('arrowright')) x += 1;
+    if (this.down('w') || this.down('arrowup')) y -= 1;
+    if (this.down('s') || this.down('arrowdown')) y += 1;
+    return { x, y };
+  }
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-  };
+  endFrame() {
+    this.pressed = {};
+    this.mouseClicked = false;
+  }
 }
